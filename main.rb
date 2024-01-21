@@ -66,7 +66,7 @@ end
 lrcPath = './lyrics/legião-urbana_caboclo-faroeste.lrc'
 
 def parse_lrc(lrcPath)
-  lyrics = {}
+  lyrics = []
   File.readlines(lrcPath).each do |line|
     match = line.match(/^\[(\d{2}:\d{2}.\d{2})\]\s+(.*)/)
     puts "'THIS IS A MTCH' #{match.to_a}"
@@ -75,16 +75,43 @@ def parse_lrc(lrcPath)
     puts 'empty lyrics' if match[2] == ''
     next unless match
 
-    lyrics.store(match[1], match[2])
+    # lyrics.store(match[1], match[2])
+    lyrics << [match[1], match[2]]
     # puts match.to_a
   end
   lyrics
 end
 lyrics = parse_lrc(lrcPath)
-puts lyrics.keys[10]
-puts lyrics.values[10]
 
-# probably hash isn't the best choice
-# Array of arrays (length 2) would be better
+# puts lyrics.keys[10]
+# puts lyrics.values[10]
+puts lyrics[1][0].inspect
+puts lyrics[1][1].inspect
+
+def review_lyrics(lyrics)
+  indices = []
+  lyrics.each_with_index do |line, index|
+    puts line
+    print 'Do you want to keep this line? (y/n): '
+    user_input = gets.chomp.downcase
+    if user_input == 'y'
+      indices << index
+    elsif user_input == 'q'
+      break
+    else
+      next
+    end
+  end
+  indices
+end
+
+indices = review_lyrics(lyrics)
+
+indices.each do |index|
+  puts "#{lyrics[index][0]}: #{lyrics[index][1]}"
+end
+
+# now add word index functionality
+
 # Function trim audio
-# Input: lines of lyrics
+# See the ruby gem in my tabs
