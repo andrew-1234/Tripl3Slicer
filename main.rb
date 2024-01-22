@@ -88,30 +88,95 @@ lyrics = parse_lrc(lrcPath)
 puts lyrics[1][0].inspect
 puts lyrics[1][1].inspect
 
+# Psuedocode: Given a string, return a dotpoint list of index: word
+def print_dotpoints(line)
+  line.split.each_with_index do |word, index|
+    puts "#{index}: #{word}"
+  end
+end
+
+def select_word(_line)
+  puts 'Enter digits separated by commas (e.g., 1, 3, 5):'
+  user_input = gets.chomp
+  user_input.split(',').map(&:strip).map(&:to_i)
+end
+
+# Clozes words in a sentence by index position
+#
+# @param sentence [String] the input sentence string
+# @param positions [Array<Integer>] an array of index values of word elements
+# @return [String] Returns the sentence string with clozed {{c1:words}}.
+def cloze_sentence(sentence, positions)
+  new_sentence = ''
+  counter = 0
+  sentence.split(' ').each_with_index do |word, index|
+    new_sentence += if positions.include?(index)
+                      counter += 1
+                      "{{c#{counter}:#{word}}} "
+                    else
+                      "#{word} "
+                    end
+  end
+  new_sentence.strip
+end
+
 def review_lyrics(lyrics)
-  indices = []
+  selected_lines_index = []
+  clozed_lyrics = lyrics
   lyrics.each_with_index do |line, index|
-    puts line
+    puts line[1]
     print 'Do you want to keep this line? (y/n): '
     user_input = gets.chomp.downcase
     if user_input == 'y'
-      indices << index
+      selected_lines_index << index
+      print_dotpoints(line[1])
+      selected_word_index = select_word(line[1])
+      clozed_lyrics[index][1] = cloze_sentence(line[1], selected_word_index)
     elsif user_input == 'q'
       break
     else
       next
     end
   end
-  indices
+  [clozed_lyrics, selected_lines_index]
 end
 
-indices = review_lyrics(lyrics)
+lyrics_object = review_lyrics(lyrics)
+puts lyrics_object[1].inspect
 
-indices.each do |index|
-  puts "#{lyrics[index][0]}: #{lyrics[index][1]}"
+clozed_lines = lyrics_object[0].values_at(*lyrics_object[1])
+clozed_lines.each do |line|
+  puts line[0]
+  puts line[1]
 end
 
-# now add word index functionality
+clozed_lyric_line_contents = lyrics_object[0]
+clozed_lyric_line_indices = lyrics_object[1]
+
+def get_context(card_line_index, buffer)
+  context = card_line_index + buffer
+end
+
+# @ return array of previous and next context lines
+def get_lines(lyrics, context)
+  lyrics.values_at[*context]
+end
+
+context_lines.insert(1, clozed_sentence)
+
+# For each card i need 2 time values
+# Card = index of clozed lyric
+# card audio start = time of clozed lyric
+# card audio end = time of next line (card index + 1)
+# Function: get context Given an of a cloze sentence, return an array of the
+# context lines with the cloze line (this is a card)
 
 # Function trim audio
 # See the ruby gem in my tabs
+# Audio slice = length of context lines based on content lines or one line only
+# Add 1 second buffer to start and end times
+# Switch option: multiple cloze per line = the same card OR
+#                multiple cloze per line = different cards (default)
+
+# Function input options (general)
+# Card = line with cloze, HOW MANY CONTEXT LINES (previous + next context lines)
