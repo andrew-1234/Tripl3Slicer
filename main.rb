@@ -1,6 +1,7 @@
 #! /usr/bin/env ruby
 require 'optparse'
-
+require 'pry'
+require 'audio_trim'
 def banner
   puts "
 ▄▄▄▄▀ █▄▄▄▄ ▄█ █ ▄▄  █        ▄▄▄▄▄   █     ▄█ ▄█▄    ▄███▄   █▄▄▄▄
@@ -12,83 +13,88 @@ def banner
           "
 end
 
-def indented_puts(_key, _value)
-  _key = "#{_key}".ljust(13)
-  puts "  #{_key}: #{_value}"
-end
+class Options
+  # @param [String] lyrics_file Path to the .lrc file
+  # @param [String] song_file Path to the .mp3 input file
+  # @param [String] output_dir Path to the output directory
+  attr_accessor :lyrics_file, :song_file, :output_dir
 
-options = {
-  camel: nil,
-  'first-name': nil,
-  random: nil
-}
+  # @param [String] lyrics Path to the .lrc file
+  # @param [String] song Path to the .mp3 input file
+  # @param [String] output Path to the output directory
+  def initialize(lyrics = './lyrics/legião-urbana_caboclo-faroeste.lrc', song = nil, output = './output')
+    @lyrics_file = lyrics
+    @song_file = song
+    @output_dir = output
+    parse_options
+    check_options
+  end
 
-parser = OptionParser.new do |parser|
-  parser.on('-c', '--camel', 'Path to the lrc file')
-  parser.on('-f', '--first-name FIRST_NAME', "Replacement for Chuck's first name")
-  parser.on('-r', '--random RANDOM_JOKES_COUNT', 'Render n random jokes')
-  parser.on('-h', '--help', 'Prints this help') do
-    banner
-    puts parser
+  private
+
+  #  Assign values to the Options variables
+  def parse_options
+    parser = OptionParser.new do |parser|
+      parser.on('-l', '--lyrics LYRICS', 'Path to the .lrc file') do |l|
+        @lyrics_file = l
+      end
+      parser.on('-s', '--song SONG', 'Path to the .mp3 input file') do |s|
+        @song_file = s
+      end
+      parser.on('-d', '--output', 'Path to the output directory') do |o|
+        @output_dir = o
+      end
+      parser.on('-h', '--help', 'Prints this help') do
+        banner
+        puts parser
+        exit
+      end
+    end.parse!
+  end
+
+  # Check if the required Options variables have values
+  def check_options
+    return unless @lyrics_file.nil? || @song_file.nil?
+
+    puts 'Missing arguments. Please use -h or --help for help.'
     exit
   end
 end
 
-parser.parse!(into: options)
+main
+binding.pry
 
-# options[:'first-name'] ||= 'Chuck'
-# options[:random] ||= 100
+class Card
+  attr_accessor :sentence, :position, :audio_start, :audio_end
 
-if options.values.all?(&:nil?)
-  banner
-  puts 'Missing arguments: '
-  puts '+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+'
-  puts parser
-  exit
-else
-  # Assign default values only to the missing keys
-  options[:camel] ||= 'default_camel_value'
-  options[:'first-name'] ||= 'default_first_name_value'
-  options[:random] ||= 'default_random_value'
+  def initialize(sentence, position, audio_start, audio_end)
+    @sentence = sentence
+    @position = position
+    @audio_start = audio_start
+    @audio_end = audio_end
+  end
 end
 
-options.each do |key, value|
-  indented_puts(key, value)
-end
-
-# Import a lyrics file
-
-# Function to read a lyrics file and return a hash of the lyrics
-
-# Read lyrics file
-# Input: path to lrc file
-# Output: hash of lyrics
-lrcPath = './lyrics/legião-urbana_caboclo-faroeste.lrc'
+# From an array of clozed sentences, return an array of Card objects
+# For each sentence, assign the card's position, audio start and audio end
+# For each card, create a file name for output from output directory and card
+# position
+# For each card object, slice the audio file to create the audio chunk
+# For each card, create an anki relative link to the audio chunk (media folder)
+# For each card, we need a clozed sentence and anki link to the audio chunk
+# For each card, format the sentence and audio link for csv output
 
 def parse_lrc(lrcPath)
   lyrics = []
   File.readlines(lrcPath).each do |line|
     match = line.match(/^\[(\d{2}:\d{2}.\d{2})\]\s+(.*)/)
-    puts "'THIS IS A MTCH' #{match.to_a}"
-    puts "'THIS IS A match index 1' #{match[1]}"
-    puts "'THIS IS A match index 2' #{match[2]}"
-    puts 'empty lyrics' if match[2] == ''
     next unless match
 
-    # lyrics.store(match[1], match[2])
     lyrics << [match[1], match[2]]
-    # puts match.to_a
   end
   lyrics
 end
 lyrics = parse_lrc(lrcPath)
-
-# puts lyrics.keys[10]
-# puts lyrics.values[10]
-puts lyrics[1][0].inspect
-puts lyrics[1][1].inspect
-
-# Psuedocode: Given a string, return a dotpoint list of index: word
 def print_dotpoints(line)
   line.split.each_with_index do |word, index|
     puts "#{index}: #{word}"
@@ -142,41 +148,31 @@ def review_lyrics(lyrics)
 end
 
 lyrics_object = review_lyrics(lyrics)
-puts lyrics_object[1].inspect
 
+# lyrics object [0] is an array where each element = a lyrics line
+# each lyrics line is an array with element 0 = time stamp and 1 = string
+# lyrics object [1] is an array of index values that correspond to which
+# elements of array [lyrics object [0]] have a cloze deletion
 clozed_lines = lyrics_object[0].values_at(*lyrics_object[1])
-clozed_lines.each do |line|
-  puts line[0]
-  puts line[1]
+start_times = clozed_lines.map { |line| line[0] }
+
+end_lines = lyrics_object[1].map { |index| index + 1 }
+end_times = end_lines.map { |index| lyrics_object[0][index][0] }
+
+# print start time end time for each element
+for i in 0..clozed_lines.length - 1
+  puts "start time: #{start_times[i]}, end time: #{end_times[i]}"
+  puts clozed_lines[i][1] # lyrics
 end
 
-clozed_lyric_line_contents = lyrics_object[0]
-clozed_lyric_line_indices = lyrics_object[1]
+# sox probably mm:ss format or just ss
+input_file = File.expand_path('./music/legião-urbana_faroeste-caboclo.mp3')
+puts input_file
+# output_file = File.expand_path('./music/legião-urbana_faroeste-caboclo_out.mp3')
+trimmer = AudioTrimmer.new input: input_file
+trimmer.trim(start: '30', finish: '1000')
 
-def get_context(card_line_index, buffer)
-  context = card_line_index + buffer
+def main
+  options = Options.new
+  p options
 end
-
-# @ return array of previous and next context lines
-def get_lines(lyrics, context)
-  lyrics.values_at[*context]
-end
-
-context_lines.insert(1, clozed_sentence)
-
-# For each card i need 2 time values
-# Card = index of clozed lyric
-# card audio start = time of clozed lyric
-# card audio end = time of next line (card index + 1)
-# Function: get context Given an of a cloze sentence, return an array of the
-# context lines with the cloze line (this is a card)
-
-# Function trim audio
-# See the ruby gem in my tabs
-# Audio slice = length of context lines based on content lines or one line only
-# Add 1 second buffer to start and end times
-# Switch option: multiple cloze per line = the same card OR
-#                multiple cloze per line = different cards (default)
-
-# Function input options (general)
-# Card = line with cloze, HOW MANY CONTEXT LINES (previous + next context lines)
