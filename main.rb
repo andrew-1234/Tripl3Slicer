@@ -1,7 +1,7 @@
 #! /usr/bin/env ruby
 require 'optparse'
 require 'pry'
-require 'audio_trim'
+load '/Users/andrew/Documents/GitHub/Tripl3Slicer/audio_trim.rb'
 def banner
   puts "
 ▄▄▄▄▀ █▄▄▄▄ ▄█ █ ▄▄  █        ▄▄▄▄▄   █     ▄█ ▄█▄    ▄███▄   █▄▄▄▄
@@ -28,6 +28,7 @@ class Options
     @output_dir = output
     parse_options
     check_options
+    check_directory(@output_dir)
   end
 
   private
@@ -59,19 +60,12 @@ class Options
     puts 'Missing arguments. Please use -h or --help for help.'
     exit
   end
-end
 
-main
-binding.pry
+  def check_directory(directory)
+    return if Dir.exist?(directory)
 
-class Card
-  attr_accessor :sentence, :position, :audio_start, :audio_end
-
-  def initialize(sentence, position, audio_start, audio_end)
-    @sentence = sentence
-    @position = position
-    @audio_start = audio_start
-    @audio_end = audio_end
+    puts "Directory #{directory} does not exist. Creating directory."
+    Dir.mkdir(directory)
   end
 end
 
@@ -84,95 +78,160 @@ end
 # For each card, we need a clozed sentence and anki link to the audio chunk
 # For each card, format the sentence and audio link for csv output
 
-def parse_lrc(lrcPath)
-  lyrics = []
-  File.readlines(lrcPath).each do |line|
-    match = line.match(/^\[(\d{2}:\d{2}.\d{2})\]\s+(.*)/)
-    next unless match
-
-    lyrics << [match[1], match[2]]
-  end
-  lyrics
-end
-lyrics = parse_lrc(lrcPath)
-def print_dotpoints(line)
-  line.split.each_with_index do |word, index|
-    puts "#{index}: #{word}"
-  end
-end
-
-def select_word(_line)
-  puts 'Enter digits separated by commas (e.g., 1, 3, 5):'
-  user_input = gets.chomp
-  user_input.split(',').map(&:strip).map(&:to_i)
-end
+# Create a class Lyrics, which accepts a class Options. The Lyrics class will include methods to read lyric files, and operate on the lyrics.
 
 # Clozes words in a sentence by index position
 #
 # @param sentence [String] the input sentence string
 # @param positions [Array<Integer>] an array of index values of word elements
 # @return [String] Returns the sentence string with clozed {{c1:words}}.
-def cloze_sentence(sentence, positions)
-  new_sentence = ''
-  counter = 0
-  sentence.split(' ').each_with_index do |word, index|
-    new_sentence += if positions.include?(index)
-                      counter += 1
-                      "{{c#{counter}:#{word}}} "
-                    else
-                      "#{word} "
-                    end
+
+class Card
+  attr_accessor :sentence, :position, :audio_start, :audio_end, :audio_path
+
+  def initialize(sentence, position, audio_start, audio_end, audio_path)
+    @sentence = sentence
+    @position = position
+    @audio_start = audio_start
+    @audio_end = audio_end
+    @audio_path = audio_path
   end
-  new_sentence.strip
 end
 
-def review_lyrics(lyrics)
-  selected_lines_index = []
-  clozed_lyrics = lyrics
-  lyrics.each_with_index do |line, index|
-    puts line[1]
-    print 'Do you want to keep this line? (y/n): '
-    user_input = gets.chomp.downcase
-    if user_input == 'y'
-      selected_lines_index << index
-      print_dotpoints(line[1])
-      selected_word_index = select_word(line[1])
-      clozed_lyrics[index][1] = cloze_sentence(line[1], selected_word_index)
-    elsif user_input == 'q'
-      break
-    else
-      next
+class Deck
+  attr_accessor :cards, :options, :lyrics
+
+  def initialize(options, lyrics)
+    @options = options
+    @lyrics = lyrics
+    @cards = []
+  end
+
+  def mint_cards
+    @lyrics.lyrics_clozed.each_with_index do |(audio_start, sentence), index|
+      position = @lyrics.selected_lines_index[index]
+      audio_end = if position + 1 < lyrics.lyrics.length
+                    @lyrics.lyrics[position + 1][0]
+                  else
+                    # audio end > input logic inside audio_trim.rb
+                    '99:99.99'
+                  end
+      audio_path = "#{@options.output_dir}/card_#{position}.mp3"
+      @cards << Card.new(sentence, position, audio_start, audio_end, audio_path)
     end
   end
-  [clozed_lyrics, selected_lines_index]
+
+  def mint_audio
+    @cards.each do |card|
+      trimmer = AudioTrimmer.new input: @options.song_file
+      trimmer.trim(start: card.audio_start, finish: card.audio_end, output: card.audio_path)
+      p "#{card.audio_path} created."
+    end
+  end
 end
 
-lyrics_object = review_lyrics(lyrics)
+class Lyrics
+  attr_accessor :options, :lyrics, :selected_lines_index, :lyrics_clozed
 
-# lyrics object [0] is an array where each element = a lyrics line
-# each lyrics line is an array with element 0 = time stamp and 1 = string
-# lyrics object [1] is an array of index values that correspond to which
-# elements of array [lyrics object [0]] have a cloze deletion
-clozed_lines = lyrics_object[0].values_at(*lyrics_object[1])
-start_times = clozed_lines.map { |line| line[0] }
+  def initialize(options)
+    @options = options
+    @lyrics = parse_lrc(options.lyrics_file)
+    @selected_lines_index = []
+    @lyrics_clozed = []
+  end
 
-end_lines = lyrics_object[1].map { |index| index + 1 }
-end_times = end_lines.map { |index| lyrics_object[0][index][0] }
+  def parse_lrc(lrcPath)
+    lyrics = []
+    File.readlines(lrcPath).each do |line|
+      match = line.match(/^\[(\d{2}:\d{2}.\d{2})\]\s+(.*)/)
+      next unless match
 
-# print start time end time for each element
-for i in 0..clozed_lines.length - 1
-  puts "start time: #{start_times[i]}, end time: #{end_times[i]}"
-  puts clozed_lines[i][1] # lyrics
+      lyrics << [match[1], match[2]]
+    end
+    lyrics
+  end
+
+  def interactive_select(lyrics)
+    lyrics.each_with_index do |line, index|
+      puts line[1]
+      print 'Do you want to keep this line? (y/n): '
+      user_input = gets.chomp.downcase
+      if user_input == 'y'
+        @selected_lines_index << index
+        print_dotpoints(line[1])
+        selected_word_index = select_word
+        @lyrics_clozed << [line[0], cloze_sentence(line[1], selected_word_index)]
+      elsif user_input == 'q'
+        break
+      else
+        next
+      end
+    end
+  end
+
+  def cloze_sentence(sentence, positions)
+    new_sentence = ''
+    counter = 0
+    sentence.split(' ').each_with_index do |word, index|
+      new_sentence += if positions.include?(index)
+                        counter += 1
+                        "{{c#{counter}:#{word}}} "
+                      else
+                        "#{word} "
+                      end
+    end
+    new_sentence.strip
+  end
+
+  def print_dotpoints(line)
+    line.split.each_with_index do |word, index|
+      puts "#{index}: #{word}"
+    end
+  end
+
+  def select_word
+    puts 'Enter digits separated by commas (e.g., 1, 3, 5):'
+    user_input = gets.chomp
+    user_input.split(',').map(&:strip).map(&:to_i)
+  end
 end
-
-# sox probably mm:ss format or just ss
-input_file = File.expand_path('./music/legião-urbana_faroeste-caboclo.mp3')
-puts input_file
-# output_file = File.expand_path('./music/legião-urbana_faroeste-caboclo_out.mp3')
-trimmer = AudioTrimmer.new input: input_file
-trimmer.trim(start: '30', finish: '1000')
 
 def main
   options = Options.new
   p options
+  lyrics = Lyrics.new(options)
+  p lyrics
+  lyrics.interactive_select(lyrics.lyrics)
+  # Create a new deck from the lyrics
+  my_deck = Deck.new(options, lyrics)
+  my_deck.mint_cards
+  my_deck.mint_audio
 end
+
+main
+
+# read this
+# https://ruby-doc.org/core-2.6/Enumerator.html
+
+# Block parameters -------------------------------------------------------------
+# When you use a block with two parameters (like |time, word|) with an array
+# where each element is itself an array of two elements (like the pairs in
+# lyric_stuff), Ruby automatically assigns the first element of each pair to the
+# first block parameter (time in this case) and the second element to the second
+# block parameter (word).
+
+# This is a feature of Ruby's block parameter unpacking. When the block expects
+# two parameters and each element of the array being iterated over is also an
+# array of two elements, Ruby automatically maps the elements of each inner
+# array to the corresponding block parameters. So, in lyric_stuff.each do |time,
+# word|, time receives the first element of each inner array (like "00:00"), and
+# word receives the second element (like "hello").
+
+# times = []
+# words = []
+# lyric_stuff.each do |time, word|
+#   times << time
+#   words << word
+# end
+# (line1, line2) = lyric_stuff
+# -----------------------------------------------------------------------------
