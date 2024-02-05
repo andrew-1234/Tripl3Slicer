@@ -1,9 +1,0 @@
-#tags:lyrics song_name_here
-#separator:Semicolon
-#html:true
-#notetype:Cloze
-#deck:andrew_notes
-#columns:Text;Back extra
-#notetype column:3
-this is a {{c1::sentance}} ok cool; and this is the back with sounds;Cloze
-this is another sentence with a {{c1::cloze}} ok nice; and this is the back again haha wow ok;Cloze

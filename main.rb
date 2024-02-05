@@ -4,7 +4,8 @@ require 'pry'
 require 'csv'
 require 'fileutils'
 require 'psych'
-load '/Users/andrew/Documents/GitHub/Tripl3Slicer/audio_trim.rb'
+load './audio_trim.rb'
+load './send_to_anki.rb'
 def banner
   puts "
 ▄▄▄▄▀ █▄▄▄▄ ▄█ █ ▄▄  █        ▄▄▄▄▄   █     ▄█ ▄█▄    ▄███▄   █▄▄▄▄
@@ -213,11 +214,12 @@ def ankify(deck)
     card_contents << [card.sentence, audio_path_anki_link, "Cloze\n"].join(';')
     audio_move(card, audio_path_anki)
   end
-  placeholder_csv_name = 'clozed_song'
   final_contents = title_block.join("\n") + "\n" + card_contents.join
 
   begin
-    File.write("#{deck.options.output_dir}/#{placeholder_csv_name}.csv", final_contents, encoding: 'UTF-8')
+    csv_name = "#{deck.options.output_dir}/cards_#{song_name}.csv"
+    File.write(csv_name, final_contents, encoding: 'UTF-8')
+    [csv_name, song_name]
   rescue StandardError => e
     puts 'whoops something went wrong writing the csv'
     puts "#{e.class}: #{e.message}"
@@ -242,7 +244,14 @@ def main
   my_deck = Deck.new(options, lyrics)
   my_deck.mint_cards
   my_deck.mint_audio
-  ankify(my_deck)
+  csv_info = ankify(my_deck)
+  puts 'Attempt direct import to anki with ankiconnect? (y/n)'
+  puts 'WARNING: Anki must be open to work'
+  user_input = gets.chomp.downcase
+  return unless user_input == 'y'
+
+  send_to_anki(csv_info[0], csv_info[1])
+  puts 'Import complete!'
 end
 
 main

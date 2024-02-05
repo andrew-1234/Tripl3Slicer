@@ -1,6 +1,5 @@
-# https://github.com/rbrigden/audio-trimmer-ruby
+# class audio trimmer from: https://github.com/rbrigden/audio-trimmer-ruby
 require 'pry'
-# good place to practice curry?
 def buffer_seconds(time_string, direction)
   minutes, seconds = time_string.split(':').map(&:to_f)
   total_seconds = minutes * 60 + seconds
@@ -37,8 +36,6 @@ class AudioTrimmer
       out_arr[out_arr.length - 2] += '_out'
       output = out_arr.join('.')
       `sox #{@input} #{output} trim #{start} =#{finish_buffered} fade 00:00:05 0 00:00:05`
-
-      # `mv #{output} #{@input}` # don't overwrite the original file
     else
       output = File.expand_path(output)
       `sox #{@input} #{output} trim #{start} =#{finish_buffered} fade 00:00:1 0 00:00:1`
