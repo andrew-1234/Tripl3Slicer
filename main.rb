@@ -1,6 +1,9 @@
 #! /usr/bin/env ruby
 require 'optparse'
 require 'pry'
+require 'csv'
+require 'fileutils'
+require 'psych'
 load '/Users/andrew/Documents/GitHub/Tripl3Slicer/audio_trim.rb'
 def banner
   puts "
@@ -12,6 +15,9 @@ def banner
           ▀         ▀                                             ▀
           "
 end
+
+$anki_deck = 'portuguese'
+$anki_media_folder = '/Users/andrew/Library/Application Support/Anki2/User 1/collection.media'
 
 class Options
   # @param [String] lyrics_file Path to the .lrc file
@@ -29,6 +35,7 @@ class Options
     parse_options
     check_options
     check_directory(@output_dir)
+    options_confirm_continue
   end
 
   private
@@ -67,24 +74,17 @@ class Options
     puts "Directory #{directory} does not exist. Creating directory."
     Dir.mkdir(directory)
   end
+
+  def options_confirm_continue
+    puts 'These are your options, continue? (y/n)'
+    puts 'Options: ---------------------------------'
+    puts "- Lyrics file: #{@lyrics_file}"
+    puts "- Song file: #{@song_file}"
+    puts "- Output directory: #{@output_dir}"
+    user_input = gets.chomp.downcase
+    exit if user_input != 'y'
+  end
 end
-
-# From an array of clozed sentences, return an array of Card objects
-# For each sentence, assign the card's position, audio start and audio end
-# For each card, create a file name for output from output directory and card
-# position
-# For each card object, slice the audio file to create the audio chunk
-# For each card, create an anki relative link to the audio chunk (media folder)
-# For each card, we need a clozed sentence and anki link to the audio chunk
-# For each card, format the sentence and audio link for csv output
-
-# Create a class Lyrics, which accepts a class Options. The Lyrics class will include methods to read lyric files, and operate on the lyrics.
-
-# Clozes words in a sentence by index position
-#
-# @param sentence [String] the input sentence string
-# @param positions [Array<Integer>] an array of index values of word elements
-# @return [String] Returns the sentence string with clozed {{c1:words}}.
 
 class Card
   attr_accessor :sentence, :position, :audio_start, :audio_end, :audio_path
@@ -116,7 +116,8 @@ class Deck
                     # audio end > input logic inside audio_trim.rb
                     '99:99.99'
                   end
-      audio_path = "#{@options.output_dir}/card_#{position}.mp3"
+      card_id = File.basename(@options.song_file, '.*')
+      audio_path = "#{@options.output_dir}/#{card_id}_card_ln_#{position}.mp3"
       @cards << Card.new(sentence, position, audio_start, audio_end, audio_path)
     end
   end
@@ -175,7 +176,7 @@ class Lyrics
     sentence.split(' ').each_with_index do |word, index|
       new_sentence += if positions.include?(index)
                         counter += 1
-                        "{{c#{counter}:#{word}}} "
+                        "{{c#{counter}::#{word}}} "
                       else
                         "#{word} "
                       end
@@ -196,16 +197,52 @@ class Lyrics
   end
 end
 
+def ankify(deck)
+  song_name = File.basename(deck.options.song_file, '.*')
+  title_block = "#tags:lyrics #{song_name}",
+                '#separator:Semicolon',
+                '#html:true',
+                '#notetype:Cloze',
+                "#deck:#{$anki_deck}",
+                '#columns:Text;Back extra',
+                '#notetype column:3'
+  card_contents = []
+  deck.cards.each do |card|
+    audio_path_anki = File.basename(card.audio_path)
+    audio_path_anki_link = "[sound:#{audio_path_anki}]"
+    card_contents << [card.sentence, audio_path_anki_link, "Cloze\n"].join(';')
+    audio_move(card, audio_path_anki)
+  end
+  placeholder_csv_name = 'clozed_song'
+  final_contents = title_block.join("\n") + "\n" + card_contents.join
+
+  begin
+    File.write("#{deck.options.output_dir}/#{placeholder_csv_name}.csv", final_contents, encoding: 'UTF-8')
+  rescue StandardError => e
+    puts 'whoops something went wrong writing the csv'
+    puts "#{e.class}: #{e.message}"
+    exit
+  end
+end
+
+def audio_move(card, audio_path_anki)
+  # move audio files to the Anki media folder
+  FileUtils.cp(card.audio_path, File.path($anki_media_folder + '/' + audio_path_anki))
+rescue StandardError => e
+  puts 'whoops something went wrong moving an audio file'
+  puts "#{e.class}: #{e.message}"
+  exit
+end
+
 def main
   options = Options.new
-  p options
   lyrics = Lyrics.new(options)
-  p lyrics
   lyrics.interactive_select(lyrics.lyrics)
-  # Create a new deck from the lyrics
+  if lyrics.selected_lines_index.empty? then puts "\nNo selections.."; exit end
   my_deck = Deck.new(options, lyrics)
   my_deck.mint_cards
   my_deck.mint_audio
+  ankify(my_deck)
 end
 
 main
