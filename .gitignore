@@ -1,5 +1,6 @@
 .DS_Store
 notes.md
+.syncedlyrics/
 *.lrc
 *.mp3
 mp3_downloader.py
